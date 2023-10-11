@@ -11,6 +11,7 @@ class ExcelAnalyzerApp:
     FILE_TYPES = [("Excel files", "*.xlsx *.xls")]
     DEFAULT_LANGUAGE = "Korean"
     DEFAULT_COLUMN = "opinion"
+    DEFAULT_NEW_COLUMN = "summary"
 
     # Singleton
     _instance = None
@@ -35,6 +36,7 @@ class ExcelAnalyzerApp:
         self.num_chunks = 0
         self.processed_chunks = 0
         self.target_column = StringVar(value=self.DEFAULT_COLUMN)
+        self.new_column_name = StringVar(value=self.DEFAULT_COLUMN)
 
         # Set up the ExcelFileAnalyzer
         self.excel_file_analyzer = ExcelFileAnalyzer()
@@ -64,9 +66,12 @@ class ExcelAnalyzerApp:
         self.message_combobox.set(next(iter(SystemMessages.ALL_MESSAGES.keys())))
         self.message_combobox.pack()
 
+        self.new_column_name = tkinter.Entry(frame, textvariable=self.new_column_name)
+        self.new_column_name.pack()
+
         self.gpt_classification_button, self.gpt_classification_label = self._init_button_label_component_pack(
             frame, "Run GPT-powered Classification", lambda: self.excel_file_analyzer.message_resolver(
-                self.target_column.get(), self.message_combobox.get()), "Not processed yet") #TODO: show the progress
+                self.target_column.get(), self.message_combobox.get(), self.new_column_name.get()), "Not processed yet") #TODO: show the progress
         
         self.save_label = tkinter.Label(frame, text="Not saved yet", wraplength=350)
         self.save_label.pack()
@@ -84,6 +89,14 @@ class ExcelAnalyzerApp:
         
         self.seperator_2 = tkinter.ttk.Separator(frame, orient="horizontal")
         self.seperator_2.pack(fill="x", pady=10)
+
+        # Divide excel files
+
+        self.concat_excel_file_button, self.concat_excel_file_label = self._init_button_label_component_pack(
+            frame, "Divide Excel Files", lambda: self.excel_file_analyzer.divide_excel_file(), "No file selected")
+        
+        self.seperator_3 = tkinter.ttk.Separator(frame, orient="horizontal")
+        self.seperator_3.pack(fill="x", pady=10)
 
         # Combine two excel files
 

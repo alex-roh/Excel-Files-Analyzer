@@ -1,4 +1,5 @@
 import os
+import re
 import threading
 import pandas as pd
 import inspect
@@ -23,7 +24,7 @@ class ExcelFileAnalyzer(Observable):
         self.filepath = None
         self.filename = None
         self.target_column = None
-        self.eval_column = None
+        self.standard_column = None
         self.excel_files = [None, None]
         self.okt = Okt()
         self.logger = None
@@ -76,6 +77,11 @@ class ExcelFileAnalyzer(Observable):
             return True
         return df.empty
     
+    def natural_sort_key(s):
+        # Use regular expression to convert number parts of the string to integers
+        # This way, '2' is before '10' while 'a' is before 'b'
+        return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', s)]
+
     # Open the excel file
     @log_function_call
     def open_excel_file(self):
@@ -109,7 +115,7 @@ class ExcelFileAnalyzer(Observable):
         self.filepath = None
         self.file_name = None
         self.target_column = None
-        self.eval_column = None
+        self.standard_column = None
         self.excel_files = [None, None]
         self.notify("update_content_label", file_name="No file selected")
         self.notify("update_save_label", message="Not saved yet")
@@ -128,7 +134,7 @@ class ExcelFileAnalyzer(Observable):
 
     # TODO: According to the system message, classify the content
     @log_function_call
-    def message_resolver(self, target_column, gpt_message):
+    def message_resolver(self, target_column, gpt_message, new_column_name='none'):
         if target_column is None or len(target_column) == 0:
             self.notify("show_error", message="No target column selected.")
             return
@@ -137,15 +143,19 @@ class ExcelFileAnalyzer(Observable):
                         
         # TODO: Remove hard-coded values
         if gpt_message == "create category (of 4 types)":
-            self._start_threaded_run_gpt_classification(gpt_message)
+            self._start_threaded_run_gpt_classification(gpt_message, new_column_name)
 
         elif gpt_message == "evaluate category":
-            self.eval_column = "category" # TODO: Remove hard-coded values
-            self._start_threaded_run_gpt_classification(gpt_message)
+            self.standard_column = "category" # TODO: Remove hard-coded values
+            self._start_threaded_run_gpt_classification(gpt_message, new_column_name)
 
         elif gpt_message == "summarize opinion":
-            self.eval_column = "category" # TODO: Remove hard-coded values
-            self._start_summarization(gpt_message)
+            self.standard_column = "category" # TODO: Remove hard-coded values
+            self._start_summarization(gpt_message, standard="의견", new_column_name=new_column_name)
+
+        elif gpt_message == "summarize eval":
+            self.standard_column = "category"
+            self._start_summarization(gpt_message, standard="의견", new_column_name=new_column_name)
 
     @log_function_call
     def combine_two_excel_files(self, mode='none', num=-1, base_df=None, extra_df=None):
@@ -184,13 +194,21 @@ class ExcelFileAnalyzer(Observable):
         # Merge and save the dataframes
         combined_df = base_df.merge(extra_df, on=ExcelFileAnalyzer.INDEX, how='left')
 
-        if mode == 'df ready':
-            return combined_df
-        
+        if(mode == 'df ready'):
+            combined_file_name = f"Combined({self.file_name}).xlsx"
+            combined_df.to_excel(combined_file_name, index=False, engine='openpyxl')
+            extra_file_name = f"Extra({self.file_name}).xlsx"
+            extra_df.to_excel(extra_file_name, index=False, engine='openpyxl')
+            return
+
         combined_file_name = f"Combined({os.path.basename(self.excel_files[0])}_{os.path.basename(self.excel_files[1])}).xlsx"
         combined_df.to_excel(combined_file_name, index=False, engine='openpyxl')
 
+        extra_file_name = f"Extra({os.path.basename(self.excel_files[0])}_{os.path.basename(self.excel_files[1])}).xlsx"
+        extra_df.to_excel(extra_file_name, index=False, engine='openpyxl')
+
         print(f"{combined_file_name} saved successfully.")
+        print(f"{extra_file_name} saved successfully.")
 
     # TODO: Concatenate multiple excel files
     @log_function_call
@@ -201,22 +219,37 @@ class ExcelFileAnalyzer(Observable):
             return
         
         excel_files_names = [os.path.splitext(os.path.basename(excel_file))[0] for excel_file in excel_files]
-        sorted_files_names = sorted(excel_files_names, key=lambda x: int(x.split(".")[0]))
+        sorted_files_names = sorted(excel_files_names, key=ExcelFileAnalyzer.natural_sort_key)
 
         # Sort the actual file paths by their filenames
-        sorted_files = sorted(excel_files, key=lambda x: os.path.basename(x).split(".")[0])
+        sorted_files = sorted(excel_files, key=ExcelFileAnalyzer.natural_sort_key)
 
         # Initialize the base dataframe using the first file
         base_df = pd.read_excel(sorted_files[0], engine='openpyxl')
-        base_df.insert(0, 'date', sorted_files_names[0])  # Add the filename as the first column
+        # base_df.insert(0, 'date', sorted_files_names[0])  # Add the filename as the first column
 
          # Process the rest of the files
         for i, excel_file in enumerate(sorted_files[1:], start=1):
             df_tmp = pd.read_excel(excel_file, engine='openpyxl')
-            df_tmp.insert(0, 'date', sorted_files_names[i])  # Add the filename as the first column
+            # df_tmp.insert(0, 'date', sorted_files_names[i])  # Add the filename as the first column
             base_df = pd.concat([base_df, df_tmp])
         
         base_df.to_excel(f"Concatenated({sorted_files_names[0]}_{sorted_files_names[-1]}).xlsx", index=False, engine='openpyxl')
+
+    @log_function_call
+    def divide_excel_file(self):
+        excel_file = self.notify("request_excel_file")
+        df = pd.read_excel(excel_file, engine='openpyxl')
+        unique_dates = df['date'].unique()
+        for date in unique_dates:
+            # Filter the dataframe for the specific date
+            df_filtered = df[df['date'] == date]
+            
+            # Save the filtered dataframe to an Excel file
+            file_name = f"data_{date}.xlsx"
+            df_filtered.to_excel(file_name, index=False)
+            print(f"Saved data for date {date} to {file_name}")
+        pass
 
     # Private methods
 
@@ -236,50 +269,50 @@ class ExcelFileAnalyzer(Observable):
                 logging.critical(f"Opinion mismatch at index {idx}.")
 
     @log_function_call
-    def _start_summarization(self, gpt_message):
-        if self.eval_column not in self.df.columns.values.tolist():
+    def _start_summarization(self, gpt_message, standard, new_column_name):
+        if self.standard_column not in self.df.columns.values.tolist():
             self.notify("show_error", message="There are empty cells in the target column.")
             return
-        self.df = self.df[self.df[self.eval_column] == '의견']
-        self._start_threaded_run_gpt_classification(gpt_message)
+        self.df = self.df[self.df[self.standard_column] == standard]
+        self._start_threaded_run_gpt_classification(gpt_message, new_column_name)
 
     @log_function_call
-    def _start_threaded_run_gpt_classification(self, gpt_message):
+    def _start_threaded_run_gpt_classification(self, gpt_message, new_column_name):
         self.notify("clicked_gpt_classification_bt", message="Initiate GPT-Powered Classification...")
         # Note: In Python, a single-element tuple must be followed by a comma ,
         #       When you pass gpt_message without a trailing comma, it doesn't create a tuple.
-        thread = threading.Thread(target=self._run_gpt_classification, args=(gpt_message,))
+        thread = threading.Thread(target=self._run_gpt_classification, args=(gpt_message, new_column_name))
         thread.daemon = True
         thread.start()
     
     @log_function_call
-    def _run_gpt_classification(self, gpt_message):
+    def _run_gpt_classification(self, gpt_message, new_column_name):
 
         # Create a list of data
-        data_structs = [(idx, target, eval) if self.eval_column else (idx, target) for idx, target, eval 
-                        in zip(self.df[ExcelFileAnalyzer.INDEX], self.df[self.target_column], self.df.get(self.eval_column, [None] * len(self.df)))]
+        data_structs = [(idx, target, eval) if self.standard_column else (idx, target) for idx, target, eval 
+                        in zip(self.df[ExcelFileAnalyzer.INDEX], self.df[self.target_column], self.df.get(self.standard_column, [None] * len(self.df)))]
 
         # Chunk the tuples based on a token count
         chunks = GPTHandler.get_chunked_tuples(data_structs, gpt_message)
         self.notify("set_num_chunks", num_chunks=len(chunks))
 
         # Start the threaded process
-        response_list = GPTHandler.start_threaded_get_response(chunks, gpt_message, lambda **kwargs: self.notify("set_processed_chunks", **kwargs))
+        context_identifier = "|".join([self.file_name, self.target_column, self.standard_column, new_column_name, gpt_message])
+        response_list = GPTHandler.start_threaded_get_response(context_identifier, chunks, gpt_message, lambda **kwargs: self.notify("set_processed_chunks", **kwargs))
+        print(f"Started threaded process for {context_identifier}")
+        logging.critical(f"Started threaded process for {context_identifier}")
 
         # Process the result
-        self._create_new_column_for_classification(response_list) # TODO: Handle the case where there's already a column named 'category'
+        self._create_new_column_for_classification(response_list, new_column_name=new_column_name) # TODO: Handle the case where there's already a column named 'category'
         
         # log any missing values
         # TODO: Remove hard-coded values
         if gpt_message == "create category (of 4 types)" or gpt_message == "evaluate category":
             self._compare_num_rows(self.df_original, self.df, "opinion", f"{self.file_name}_log.txt")
-        elif gpt_message == "summarize opinion":
-            self._compare_num_rows(self.df_original[self.df_original[self.eval_column] == '의견'], self.df, "category", f"{self.file_name}_log.txt")
+        elif gpt_message == "summarize opinion" or gpt_message == "summarize eval":
+            self._compare_num_rows(self.df_original[self.df_original[self.standard_column] == '의견'], self.df, "category", f"{self.file_name}_log.txt")
 
-        combined_df = self.combine_two_excel_files(mode='df ready', base_df=self.df_original, extra_df=self.df)
-        
-        # Save the result
-        combined_df.to_excel(f"GPT_{self.file_name}", index=False)
+        self.combine_two_excel_files(mode='df ready', base_df=self.df_original, extra_df=self.df)
         self.notify("update_save_label", message="Saved!")
 
         # Clear the data
@@ -305,12 +338,8 @@ class ExcelFileAnalyzer(Observable):
             print(f"No difference in the number of rows in column {col_name}")
 
     @log_function_call
-    def _create_new_column_for_classification(self, response_list):
-        # TODO: Remove hard-coded values
-        if self.eval_column:
-            self.df["eval"] = None
-        else:
-            self.df["category"] = None
+    def _create_new_column_for_classification(self, response_list, new_column_name):
+        self.df[new_column_name] = None
 
         for _, response in response_list:
 
@@ -318,10 +347,10 @@ class ExcelFileAnalyzer(Observable):
             parsed_data = {}
 
             # Sometimes the output format is [index:value] and sometimes it's [index1, index2:value]
-            for line in lines:
+            for idx, line in enumerate(lines, start=1):
                 if ':' not in line:
                     # Logging or handling the line without a colon, if needed
-                    print(f"Warning: Unexpected format in line '{line}'")
+                    print(f"Warning: Unexpected format in line '{line}', {_}th response, {idx}th line: {line}")
                     continue
                 indices, value = line.split(":", 1)
 
@@ -334,7 +363,10 @@ class ExcelFileAnalyzer(Observable):
 
                 # If indices is still a string (i.e., not a list), it means it's a single index
                 if isinstance(indices, str):
-                    indices = [int(indices.strip())]
+                    try:
+                        indices = [int(indices.strip())]
+                    except Exception as e:
+                        continue
                 
                 value = value.strip()
                 for idx in indices:
@@ -343,10 +375,8 @@ class ExcelFileAnalyzer(Observable):
             # Map the values, but retain the original where there's no mapping
             mapped_series = self.df[ExcelFileAnalyzer.INDEX].map(parsed_data)
 
-            if self.eval_column:
-                self.df["eval"] = self.df["eval"].combine_first(mapped_series)
-            else:
-                self.df["category"] = self.df["category"].combine_first(mapped_series)
+            # Create a new column and combine the mapped series with the original
+            self.df[new_column_name] = self.df[new_column_name].combine_first(mapped_series)
 
 
     

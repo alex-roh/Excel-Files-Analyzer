@@ -44,10 +44,23 @@ FORMAT_SUMMARIZE_OPINION = """
                             (NEVER concatenate multiple indices into one line, eg. 41-44, 43~64 <- prohibited)
                         """
 
+SUMMARIZE_EVAL = """
+                    For every "index:suggestion",
+                    write two keywords that summarizes a main point of the suggestion (in Korean, no more than two words)
+                """
+
+FORMAT_SUMMARIZE_EVAL = """
+                            Input format is [index:suggestion]
+                            Your output format MUST follow [index:keyword]
+                            Your number of outputs should be equal to the number of inputs
+                        """
+
+
 ALL_MESSAGES = {
     
     'create category (of 4 types)': (CREATE_CATEGORY_OF_4_TYPES, FORMAT_CREATE_CATEGORY_OF_4_TYPES),
     'evaluate category': (EVAL_CATEGORY_OF_4_TYPES, FORMAT_EVAL_CATEGORY_OF_4_TYPES),
     'summarize opinion': (SUMMARIZE_OPINION, FORMAT_SUMMARIZE_OPINION),
+    'summarize eval': (SUMMARIZE_EVAL, FORMAT_SUMMARIZE_EVAL),
 
 }
