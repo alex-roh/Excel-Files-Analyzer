@@ -132,6 +132,7 @@ class GPTHandler:
             # Check if the response is in the cache first
             if not response:  # If not in cache
                 response = GPTHandler.__get_response_from_chatgpt(chunk, gpt_message)
+                print(f"{response}")
                 GPTHandler._save_to_cache(file_identifier, idx_chunk, response)  # Store the response to the cache
                 print(f"({file_identifier}, {idx_chunk}) Response not in cache. Stored in cache.")
             else:

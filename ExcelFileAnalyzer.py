@@ -149,12 +149,16 @@ class ExcelFileAnalyzer(Observable):
             self.standard_column = "category" # TODO: Remove hard-coded values
             self._start_threaded_run_gpt_classification(gpt_message, new_column_name)
 
+        elif gpt_message == "evaluate as others":
+            self.standard_column = "category"
+            self._start_threaded_run_gpt_classification(gpt_message, new_column_name)
+
         elif gpt_message == "summarize opinion":
             self.standard_column = "category" # TODO: Remove hard-coded values
             self._start_summarization(gpt_message, standard="의견", new_column_name=new_column_name)
 
         elif gpt_message == "summarize eval":
-            self.standard_column = "category"
+            self.standard_column = "eval_category"
             self._start_summarization(gpt_message, standard="의견", new_column_name=new_column_name)
 
     @log_function_call
@@ -307,7 +311,7 @@ class ExcelFileAnalyzer(Observable):
         
         # log any missing values
         # TODO: Remove hard-coded values
-        if gpt_message == "create category (of 4 types)" or gpt_message == "evaluate category":
+        if gpt_message == "create category (of 4 types)" or gpt_message == "evaluate category" or gpt_message == "evaluate as others":
             self._compare_num_rows(self.df_original, self.df, "opinion", f"{self.file_name}_log.txt")
         elif gpt_message == "summarize opinion" or gpt_message == "summarize eval":
             self._compare_num_rows(self.df_original[self.df_original[self.standard_column] == '의견'], self.df, "category", f"{self.file_name}_log.txt")
